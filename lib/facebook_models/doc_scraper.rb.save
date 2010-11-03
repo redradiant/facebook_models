@@ -1,0 +1,78 @@
+require 'nokogiri'
+require 'text/highlight'
+require 'facebook_models/client'
+require 'ruby-debug'
+
+module FacebookModels
+  module DocScraper
+
+    def scrape_schema!
+      doc_url = Rails.configuration.facebook_models.api_docs_url
+      String.highlighter = Text::ANSIHighlighter.new
+      puts "\n########################################################################".cyan
+      puts "# Scraping Facebook object space schema from API docs...".cyan
+      puts "# URL: #{doc_url}".cyan
+      puts "#########################################################################\n\n".cyan
+
+      agent = FacebookModels::Client.new(Rails.configuration.fbgraph.test_user, Rails.configuration.fbgraph.test_pass)
+      agent.login!
+
+      classes = {}
+      doc = agent.get(doc_url).parser
+      doc.css('div.page').each do |n|
+        type = (n/'a')[0].content
+        classes[type] = Hash.new
+        classes[type][:url] = "#{doc_url}#{(n/'a')[0].attribute("href")}"
+        puts "Discovered Facebook object type #{type.magenta}"
+      end
+
+      puts "\n\n"
+
+      classes.each_pair do |type, opts|
+        type = type.to_s
+        opts.symbolize_keys!
+        url = opts[:url]
+        #puts "\n------------------------------------------------------------------------"
+        puts "- Attempting to fetch properties for type: #{type.green}"
+        puts "- URL: #{url.yellow}"
+        #puts "-------------------------------------------------------------------------"
+
+        details = ActiveSupport::JSON.decode($agent.get($res.links_with(:href => /access_token/).first.href + "&metadata=1").body)
+        debugger
+
+        doc = agent.get(url).parser
+        #  link = ((doc/'h2').detect {|h| h.content == "Example" }.next.children.first.attribute("href").value + "?metadata=1&access_token=#{TOKEN}" rescue nil)
+
+        # Parse the HTML page
+        (doc/"table").each do |t|
+          key = t.previous.content.downcase.to_sym rescue nil
+          next unless [ :properties, :connections ].include?(key)
+
+          classes[type][key] = []
+
+          elements = (t/'tr').collect do |r|
+            attr = ((r/'td').first.content).gsub(/\s/, '').to_sym
+            perms = ((r/'td').last/'code').collect { |p| p.content.to_sym } rescue nil
+            description = ((r/'td').last.content).gsub(/\n/, '')
+            classes[type][key].push({
+              :name => attr,
+              :description => description,
+              :required_permissions => perms
+              })
+            if type == :connections
+              
+            end
+          end # rows
+        end # tables
+        puts "  + Properties  : #{classes[type][:properties].map {|i| i[:name] }.join(', ')}" unless classes[type][:properties].blank?
+        puts "  + Connections : #{classes[type][:connections].map {|i| i[:name] }.join(', ')}" unless classes[type][:connections].blank?
+        outs "\n"
+      end # object classes
+
+      classes
+    rescue Exception => e
+      raise RuntimeError, "Unable to retrieve Facebook API schema: #{e.message}"
+    end
+
+  end #module
+end # module

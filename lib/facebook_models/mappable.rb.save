@@ -1,0 +1,19 @@
+require 'active_support/concern'
+
+
+module FacebookModels
+  module Mappable
+    extend ActiveSupport::Concern
+
+    module ClassMethods
+      def map_facebook_attribute_to_model(fb_attr, opts = {})
+        # stub
+      end
+    end
+
+    module InstanceMethods
+      def fb_data
+      end
+    end
+  end
+end
